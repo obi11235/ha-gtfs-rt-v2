@@ -1,6 +1,7 @@
 import datetime
 import logging
 import requests
+import zoneinfo
 
 import voluptuous as vol
 
@@ -18,6 +19,7 @@ ATTR_ROUTE = "Route"
 ATTR_DUE_IN = "Due in"
 ATTR_DUE_AT = "Due at"
 ATTR_NEXT_UP = "Next Service"
+ATTR_NEXT_UP_DUE_IN = "Next Service Due in"
 ATTR_ICON = "Icon"
 
 CONF_API_KEY = 'api_key'
@@ -55,7 +57,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 def due_in_minutes(timestamp):
     """Get the remaining minutes from now until a given datetime object."""
-    diff = timestamp - dt_util.now().replace(tzinfo=None)
+    diff = timestamp - dt_util.utcnow().replace(tzinfo=None)
     return int(diff.total_seconds() / 60)
 
 
@@ -113,12 +115,13 @@ class PublicTransportSensor(Entity):
             ATTR_ROUTE: self._route
         }
         if len(next_services) > 0:
-            attrs[ATTR_DUE_AT] = next_services[0].arrival_time.strftime('%I:%M %p') if len(next_services) > 0 else '-'
+            attrs[ATTR_DUE_AT] = next_services[0].arrival_time.replace(tzinfo=datetime.timezone.utc).astimezone(tz=dt_util.DEFAULT_TIME_ZONE).strftime('%I:%M %p') if len(next_services) > 0 else '-'
             if next_services[0].position:
                 attrs[ATTR_LATITUDE] = next_services[0].position.latitude
                 attrs[ATTR_LONGITUDE] = next_services[0].position.longitude
         if len(next_services) > 1:
-            attrs[ATTR_NEXT_UP] = next_services[1].arrival_time.strftime('%I:%M %p') if len(next_services) > 1 else '-'
+            attrs[ATTR_NEXT_UP] = next_services[1].arrival_time.replace(tzinfo=datetime.timezone.utc).astimezone(tz=dt_util.DEFAULT_TIME_ZONE).strftime('%I:%M %p') if len(next_services) > 1 else '-'
+            attrs[ATTR_NEXT_UP_DUE_IN] = due_in_minutes(next_services[1].arrival_time) if len(next_services) > 0 else '-'
         return attrs
 
     @property
@@ -137,30 +140,30 @@ class PublicTransportSensor(Entity):
     def update(self):
         """Get the latest data from opendata.ch and update the states."""
         self.data.update()
-        _LOGGER.info("Sensor Update:")
-        _LOGGER.info("...Name: {0}".format(self._name))
-        _LOGGER.info("...{0}: {1}".format(ATTR_ROUTE,self._route))
-        _LOGGER.info("...{0}: {1}".format(ATTR_STOP_ID,self._stop))
-        _LOGGER.info("...{0}: {1}".format(ATTR_ICON,self._icon))
-        _LOGGER.info("...Service Type: {0}".format(self._service_type))
-        _LOGGER.info("...{0}: {1}".format("unit_of_measurement",self.unit_of_measurement))
-        _LOGGER.info("...{0}: {1}".format(ATTR_DUE_IN,self.state))
+        _LOGGER.debug("Sensor Update:")
+        _LOGGER.debug("...Name: {0}".format(self._name))
+        _LOGGER.debug("...{0}: {1}".format(ATTR_ROUTE,self._route))
+        _LOGGER.debug("...{0}: {1}".format(ATTR_STOP_ID,self._stop))
+        _LOGGER.debug("...{0}: {1}".format(ATTR_ICON,self._icon))
+        _LOGGER.debug("...Service Type: {0}".format(self._service_type))
+        _LOGGER.debug("...{0}: {1}".format("unit_of_measurement",self.unit_of_measurement))
+        _LOGGER.debug("...{0}: {1}".format(ATTR_DUE_IN,self.state))
         try:
-            _LOGGER.info("...{0}: {1}".format(ATTR_DUE_AT,self.extra_state_attributes[ATTR_DUE_AT]))
+            _LOGGER.debug("...{0}: {1}".format(ATTR_DUE_AT,self.extra_state_attributes[ATTR_DUE_AT]))
         except:
-            _LOGGER.info("...{0} not defined".format(ATTR_DUE_AT))
+            _LOGGER.debug("...{0} not defined".format(ATTR_DUE_AT))
         try:
-            _LOGGER.info("...{0}: {1}".format(ATTR_LATITUDE,self.extra_state_attributes[ATTR_LATITUDE]))
+            _LOGGER.debug("...{0}: {1}".format(ATTR_LATITUDE,self.extra_state_attributes[ATTR_LATITUDE]))
         except:
-            _LOGGER.info("...{0} not defined".format(ATTR_LATITUDE))
+            _LOGGER.debug("...{0} not defined".format(ATTR_LATITUDE))
         try:
-            _LOGGER.info("...{0}: {1}".format(ATTR_LONGITUDE,self.extra_state_attributes[ATTR_LONGITUDE]))
+            _LOGGER.debug("...{0}: {1}".format(ATTR_LONGITUDE,self.extra_state_attributes[ATTR_LONGITUDE]))
         except:
-            _LOGGER.info("...{0} not defined".format(ATTR_LONGITUDE))
+            _LOGGER.debug("...{0} not defined".format(ATTR_LONGITUDE))
         try:
-            _LOGGER.info("...Next {0}: {1}".format(self._service_type,self.extra_state_attributes["Next " + self._service_type]))
+            _LOGGER.debug("...Next {0}: {1}".format(self._service_type,self.extra_state_attributes["Next " + self._service_type]))
         except:
-            _LOGGER.info("...{0} not defined".format("Next " + self._service_type))
+            _LOGGER.debug("...{0} not defined".format("Next " + self._service_type))
 
 
 class PublicTransportData(object):
@@ -210,7 +213,6 @@ class PublicTransportData(object):
         for entity in feed.entity:
             if entity.HasField('trip_update'):
                 # If delimiter specified split the route id in the gtfs rt feed
-                _LOGGER.debug("...Received Trip Id {} Route Id: {} Start Time: {} Start Date: {}".format(entity.trip_update.trip.trip_id,entity.trip_update.trip.route_id,entity.trip_update.trip.start_time,entity.trip_update.trip.start_date))
                 if self._route_delimiter is not None:
                     route_id_split = entity.trip_update.trip.route_id.split(self._route_delimiter)
                     if route_id_split[0] == self._route_delimiter:
@@ -235,7 +237,6 @@ class PublicTransportData(object):
                     else:
                         stop_time = stop.arrival.time
                     # Ignore arrival times in the past
-                    _LOGGER.debug("......Stop: {} Stop Sequence: {} Stop Time: {}".format(stop_id,stop.stop_sequence,stop_time))
                     if due_in_minutes(datetime.datetime.fromtimestamp(stop_time)) >= 0:
                         _LOGGER.debug("...Adding route id {}, trip id {}, stop id {}, stop time {}".format(route_id,entity.trip_update.trip.trip_id,stop_id,stop_time))
                         details = StopDetails(
@@ -243,7 +244,6 @@ class PublicTransportData(object):
                             vehicle_positions.get(entity.trip_update.trip.trip_id)
                         )
                         departure_times[route_id][stop_id].append(details)
-
         # Sort by arrival time
         for route in departure_times:
             for stop in departure_times[route]:
