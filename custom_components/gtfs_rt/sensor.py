@@ -57,7 +57,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 def due_in_minutes(timestamp):
     """Get the remaining minutes from now until a given datetime object."""
-    diff = timestamp - dt_util.utcnow().replace(tzinfo=None)
+    diff = timestamp - dt_util.now().replace(tzinfo=None)
+    #diff = timestamp - dt_util.utcnow().replace(tzinfo=None)
     return int(diff.total_seconds() / 60)
 
 
@@ -115,12 +116,14 @@ class PublicTransportSensor(Entity):
             ATTR_ROUTE: self._route
         }
         if len(next_services) > 0:
-            attrs[ATTR_DUE_AT] = next_services[0].arrival_time.replace(tzinfo=datetime.timezone.utc).astimezone(tz=dt_util.DEFAULT_TIME_ZONE).strftime('%I:%M %p') if len(next_services) > 0 else '-'
+            attrs[ATTR_DUE_AT] = next_services[0].arrival_time.strftime('%I:%M %p') if len(next_services) > 0 else '-'
+            #attrs[ATTR_DUE_AT] = next_services[0].arrival_time.replace(tzinfo=datetime.timezone.utc).astimezone(tz=dt_util.DEFAULT_TIME_ZONE).strftime('%I:%M %p') if len(next_services) > 0 else '-'
             if next_services[0].position:
                 attrs[ATTR_LATITUDE] = next_services[0].position.latitude
                 attrs[ATTR_LONGITUDE] = next_services[0].position.longitude
         if len(next_services) > 1:
-            attrs[ATTR_NEXT_UP] = next_services[1].arrival_time.replace(tzinfo=datetime.timezone.utc).astimezone(tz=dt_util.DEFAULT_TIME_ZONE).strftime('%I:%M %p') if len(next_services) > 1 else '-'
+            attrs[ATTR_NEXT_UP] = next_services[1].arrival_time.strftime('%I:%M %p') if len(next_services) > 1 else '-'
+            #attrs[ATTR_NEXT_UP] = next_services[1].arrival_time.replace(tzinfo=datetime.timezone.utc).astimezone(tz=dt_util.DEFAULT_TIME_ZONE).strftime('%I:%M %p') if len(next_services) > 1 else '-'
             attrs[ATTR_NEXT_UP_DUE_IN] = due_in_minutes(next_services[1].arrival_time) if len(next_services) > 0 else '-'
         return attrs
 
